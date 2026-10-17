@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metri Percorsi Precisione</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --accent: #10b981;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --subtext: #94a3b8;
+    }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    h2 {
+      margin-top: 0;
+      font-size: 1.1rem;
+      color: var(--subtext);
+    }
+    .metric {
+      font-size: 2.5rem;
+      font-weight: bold;
+      color: var(--accent);
+      margin: 8px 0;
+    }
+    .sub-metric {
+      font-size: 0.9rem;
+      color: var(--subtext);
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      margin-bottom: 6px;
+      color: var(--subtext);
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #0f172a;
+      color: #fff;
+      font-size: 1rem;
+      box-sizing: border-box;
+      margin-bottom: 12px;
+    }
+    .btn-group {
+      display: flex;
+      gap: 10px;
+    }
+    button {
+      flex: 1;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    .btn-start { background-color: var(--accent); color: #000; }
+    .btn-stop { background-color: var(--danger); color: #fff; }
+    .btn-reset { background-color: #334155; color: var(--text); }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>Distanza Totale (Passi + GPS)</h2>
+    <div id="dist-total" class="metric">0.0 m</div>
+    <div id="gps-status" class="sub-metric">GPS: In attesa...</div>
+  </div>
+
+  <div class="card">
+    <h2>Dettaglio Misurazioni</h2>
+    <div>Passi rilevati: <strong id="step-count">0</strong> (<span id="dist-steps">0.0</span> m)</div>
+    <div style="margin-top: 6px;">Distanza GPS: <strong id="dist-gps">0.0</strong> m</div>
+  </div>
+
+  <div class="card">
+    <h2>Calibrazione Passo</h2>
+    <label for="step-length">Lunghezza media del tuo passo (in metri):</label>
+    <input type="number" id="step-length" value="0.75" step="0.01" min="0.1">
+    <div class="sub-metric">Esempio: se fai 10 passi per coprire 7.5 metri, inserisci 0.75.</div>
+  </div>
+
+  <div class="btn-group">
+    <button id="btn-toggle" class="btn-start" onclick="toggleTracking()">AVVIA</button>
+    <button class="btn-reset" onclick="resetData()">AZZERA</button>
+  </div>
+
+  <script>
+    let active = false;
+    let stepCount = 0;
+    let distGps = 0;
+    let lastCoords = null;
+    let watchPositionId = null;
+
+    // Rilevamento passi tramite accelerometro
+    let lastAccel = { x: 0, y: 0, z: 0 };
+    const threshold = 2.2; // Sensibilità movimento
+
+    function handleMotion(e) {
+      if (!active) return;
+      let acc = e.accelerationIncludingGravity;
+      if (!acc) return;
+
+      let deltaX = Math.abs(acc.x - lastAccel.x);
+      let deltaY = Math.abs(acc.y - lastAccel.y);
+      let deltaZ = Math.abs(acc.z - lastAccel.z);
+
+      if (deltaX + deltaY + deltaZ > threshold * 3) {
+        stepCount++;
+        updateUI();
+      }
+
+      lastAccel = { x: acc.x, y: acc.y, z: acc.z };
+    }
+
+    // Calcolo distanza GPS (Formula di Haversine)
+    function getDistanceMeters(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    function handleGps(pos) {
+      if (!active) return;
+      const coords = pos.coords;
+      document.getElementById('gps-status').innerText = `GPS Accuratezza: ±${Math.round(coords.accuracy)}m`;
+
+      if (lastCoords) {
+        let delta = getDistanceMeters(lastCoords.latitude, lastCoords.longitude, coords.latitude, coords.longitude);
+        // Filtro per evitare falsi movimenti dovuti al margine d'errore GPS
+        if (delta >= coords.accuracy / 2) {
+          distGps += delta;
+          lastCoords = coords;
+          updateUI();
+        }
+      } else {
+        lastCoords = coords;
+      }
+    }
+
+    function toggleTracking() {
+      active = !active;
+      const btn = document.getElementById('btn-toggle');
+
+      if (active) {
+        btn.innerText = "PAUSA";
+        btn.className = "btn-stop";
+
+        // Attiva Sensori
+        if (window.DeviceMotionEvent) {
+          window.addEventListener('devicemotion', handleMotion);
+        }
+
+        if ('geolocation' in navigator) {
+          watchPositionId = navigator.geolocation.watchPosition(handleGps, (err) => {
+            document.getElementById('gps-status').innerText = "Errore GPS o permessi mancanti";
+          }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 });
+        }
+      } else {
+        btn.innerText = "RIPRENDI";
+        btn.className = "btn-start";
+        window.removeEventListener('devicemotion', handleMotion);
+        if (watchPositionId) navigator.geolocation.clearWatch(watchPositionId);
+      }
+    }
+
+    function updateUI() {
+      const stepLen = parseFloat(document.getElementById('step-length').value) || 0.75;
+      const distSteps = stepCount * stepLen;
+      
+      // La distanza totale preferisce i passi per brevi tratti ed integra il GPS
+      const total = Math.max(distSteps, distGps);
+
+      document.getElementById('step-count').innerText = stepCount;
+      document.getElementById('dist-steps').innerText = distSteps.toFixed(1);
+      document.getElementById('dist-gps').innerText = distGps.toFixed(1);
+      document.getElementById('dist-total').innerText = total.toFixed(1) + " m";
+    }
+
+    function resetData() {
+      stepCount = 0;
+      distGps = 0;
+      lastCoords = null;
+      updateUI();
+    }
+  </script>
+</body>
+</html>
