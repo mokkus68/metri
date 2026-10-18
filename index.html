@@ -1,214 +1,216 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <link rel="manifest" href="manifest.json">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Metri Percorsi Precisione</title>
+  <title>Conta Metri PWA</title>
+  <link rel="manifest" href="manifest.json">
   <style>
-    :root {
-      --bg: #0f172a;
-      --card: #1e293b;
-      --accent: #10b981;
-      --danger: #ef4444;
-      --text: #f8fafc;
-      --subtext: #94a3b8;
-    }
     body {
       font-family: system-ui, -apple-system, sans-serif;
-      background-color: var(--bg);
-      color: var(--text);
+      background: #0f172a;
+      color: #f8fafc;
+      text-align: center;
+      padding: 20px;
       margin: 0;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
     }
-    .card {
-      background: var(--card);
+    h1 { font-size: 1.4rem; color: #94a3b8; margin-top: 0; }
+    .box {
+      background: #1e293b;
       border-radius: 12px;
-      padding: 16px;
+      padding: 18px;
+      margin-bottom: 16px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
-    h2 {
-      margin-top: 0;
-      font-size: 1.1rem;
-      color: var(--subtext);
-    }
     .metric {
-      font-size: 2.5rem;
+      font-size: 3rem;
       font-weight: bold;
-      color: var(--accent);
-      margin: 8px 0;
-    }
-    .sub-metric {
-      font-size: 0.9rem;
-      color: var(--subtext);
+      color: #10b981;
+      margin: 10px 0;
     }
     label {
       display: block;
-      font-size: 0.85rem;
-      margin-bottom: 6px;
-      color: var(--subtext);
+      font-size: 0.9rem;
+      color: #94a3b8;
+      margin-bottom: 8px;
     }
-    input {
+    select, input {
       width: 100%;
+      max-width: 200px;
       padding: 10px;
-      border-radius: 8px;
-      border: 1px solid #334155;
+      font-size: 1.1rem;
+      text-align: center;
       background: #0f172a;
       color: #fff;
-      font-size: 1rem;
+      border: 1px solid #334155;
+      border-radius: 8px;
       box-sizing: border-box;
-      margin-bottom: 12px;
-    }
-    .btn-group {
-      display: flex;
-      gap: 10px;
     }
     button {
-      flex: 1;
-      padding: 14px;
+      width: 100%;
+      padding: 16px;
+      font-size: 1.2rem;
+      font-weight: bold;
       border: none;
       border-radius: 8px;
-      font-weight: bold;
-      font-size: 1rem;
       cursor: pointer;
+      margin-top: 8px;
     }
-    .btn-start { background-color: var(--accent); color: #000; }
-    .btn-stop { background-color: var(--danger); color: #fff; }
-    .btn-reset { background-color: #334155; color: var(--text); }
+    .btn-start { background: #10b981; color: #000; }
+    .btn-stop { background: #ef4444; color: #fff; }
+    .btn-reset { background: #334155; color: #fff; }
+    .sub-info { font-size: 0.85rem; color: #94a3b8; margin-top: 8px; }
   </style>
 </head>
 <body>
 
-  <div class="card">
-    <h2>Distanza Totale (Passi + GPS)</h2>
-    <div id="dist-total" class="metric">0.0 m</div>
-    <div id="gps-status" class="sub-metric">GPS: In attesa...</div>
+  <h1>CONTA METRI</h1>
+  
+  <div class="box">
+    <div id="distanza-totale" class="metric">0.0 m</div>
+    <div id="stato-gps" class="sub-info">Modalità: Seleziona e avvia</div>
   </div>
 
-  <div class="card">
-    <h2>Dettaglio Misurazioni</h2>
-    <div>Passi rilevati: <strong id="step-count">0</strong> (<span id="dist-steps">0.0</span> m)</div>
-    <div style="margin-top: 6px;">Distanza GPS: <strong id="dist-gps">0.0</strong> m</div>
+  <div class="box">
+    <label for="modalita">Modalità di spostamento:</label>
+    <select id="modalita" onchange="cambiaModalita()">
+      <option value="piedi">🚶 A piedi (Passi + GPS)</option>
+      <option value="auto">🚗 In auto (Solo GPS)</option>
+    </select>
   </div>
 
-  <div class="card">
-    <h2>Calibrazione Passo</h2>
-    <label for="step-length">Lunghezza media del tuo passo (in metri):</label>
-    <input type="number" id="step-length" value="0.75" step="0.01" min="0.1">
-    <div class="sub-metric">Esempio: se fai 10 passi per coprire 7.5 metri, inserisci 0.75.</div>
+  <div class="box" id="box-passi">
+    <label for="lunghezza-passo">Lunghezza passo (metri):</label>
+    <input type="number" id="lunghezza-passo" value="0.75" step="0.05" min="0.1">
+    <div class="sub-info">Passi contati: <strong id="num-passi">0</strong></div>
   </div>
 
-  <div class="btn-group">
-    <button id="btn-toggle" class="btn-start" onclick="toggleTracking()">AVVIA</button>
-    <button class="btn-reset" onclick="resetData()">AZZERA</button>
-  </div>
+  <button id="btn-toggle" class="btn-start" onclick="avviaFerma()">AVVIA</button>
+  <button class="btn-reset" onclick="azzera()">AZZERA</button>
 
   <script>
-    let active = false;
-    let stepCount = 0;
-    let distGps = 0;
-    let lastCoords = null;
-    let watchPositionId = null;
+    let inEsecuzione = false;
+    let passi = 0;
+    let distanzaGps = 0;
+    let ultimaPosizione = null;
+    let watchId = null;
+    let ultimoTempo = 0;
 
-    // Rilevamento passi tramite accelerometro
-    let lastAccel = { x: 0, y: 0, z: 0 };
-    const threshold = 2.2; // Sensibilità movimento
+    function cambiaModalita() {
+      const modo = document.getElementById('modalita').value;
+      const boxPassi = document.getElementById('box-passi');
+      
+      if (modo === 'auto') {
+        boxPassi.style.display = 'none';
+      } else {
+        boxPassi.style.display = 'block';
+      }
+      aggiornaSchermata();
+    }
 
-    function handleMotion(e) {
-      if (!active) return;
+    // Contapassi (solo per modalità a piedi)
+    function gestisciMovimento(e) {
+      if (!inEsecuzione || document.getElementById('modalita').value !== 'piedi') return;
       let acc = e.accelerationIncludingGravity;
       if (!acc) return;
 
-      let deltaX = Math.abs(acc.x - lastAccel.x);
-      let deltaY = Math.abs(acc.y - lastAccel.y);
-      let deltaZ = Math.abs(acc.z - lastAccel.z);
-
-      if (deltaX + deltaY + deltaZ > threshold * 3) {
-        stepCount++;
-        updateUI();
+      let now = Date.now();
+      if (now - ultimoTempo > 300) {
+        let movimento = Math.abs(acc.x) + Math.abs(acc.y) + Math.abs(acc.z);
+        if (movimento > 18) {
+          passi++;
+          ultimoTempo = now;
+          aggiornaSchermata();
+        }
       }
-
-      lastAccel = { x: acc.x, y: acc.y, z: acc.z };
     }
 
-    // Calcolo distanza GPS (Formula di Haversine)
-    function getDistanceMeters(lat1, lon1, lat2, lon2) {
+    // Calcolo distanza GPS con la formula Haversine
+    function calcolaDistanza(lat1, lon1, lat2, lon2) {
       const R = 6371000;
       const dLat = (lat2 - lat1) * Math.PI / 180;
       const dLon = (lon2 - lon1) * Math.PI / 180;
       const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
                 Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
                 Math.sin(dLon/2) * Math.sin(dLon/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      return R * c;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    function handleGps(pos) {
-      if (!active) return;
-      const coords = pos.coords;
-      document.getElementById('gps-status').innerText = `GPS Accuratezza: ±${Math.round(coords.accuracy)}m`;
+    function gestisciGps(pos) {
+      if (!inEsecuzione) return;
+      let c = pos.coords;
+      const modo = document.getElementById('modalita').value;
+      document.getElementById('stato-gps').innerText = `GPS Accurato a: ±${Math.round(c.accuracy)}m (${modo === 'auto' ? 'Auto' : 'A piedi'})`;
 
-      if (lastCoords) {
-        let delta = getDistanceMeters(lastCoords.latitude, lastCoords.longitude, coords.latitude, coords.longitude);
-        // Filtro per evitare falsi movimenti dovuti al margine d'errore GPS
-        if (delta >= coords.accuracy / 2) {
-          distGps += delta;
-          lastCoords = coords;
-          updateUI();
+      if (ultimaPosizione) {
+        let metri = calcolaDistanza(ultimaPosizione.latitude, ultimaPosizione.longitude, c.latitude, c.longitude);
+        // Filtro per evitare falsi movimenti da fermo
+        const sogliaFiltro = modo === 'auto' ? 2 : (c.accuracy / 2);
+        if (metri >= sogliaFiltro) {
+          distanzaGps += metri;
+          ultimaPosizione = c;
+          aggiornaSchermata();
         }
       } else {
-        lastCoords = coords;
+        ultimaPosizione = c;
       }
     }
 
-    function toggleTracking() {
-      active = !active;
-      const btn = document.getElementById('btn-toggle');
+    function avviaFerma() {
+      inEsecuzione = !inEsecuzione;
+      let btn = document.getElementById('btn-toggle');
+      const modo = document.getElementById('modalita').value;
 
-      if (active) {
-        btn.innerText = "PAUSA";
+      if (inEsecuzione) {
+        btn.innerText = "FERMA";
         btn.className = "btn-stop";
 
-        // Attiva Sensori
-        if (window.DeviceMotionEvent) {
-          window.addEventListener('devicemotion', handleMotion);
+        if (modo === 'piedi' && window.DeviceMotionEvent) {
+          window.addEventListener('devicemotion', gestisciMovimento);
         }
 
         if ('geolocation' in navigator) {
-          watchPositionId = navigator.geolocation.watchPosition(handleGps, (err) => {
-            document.getElementById('gps-status').innerText = "Errore GPS o permessi mancanti";
-          }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 });
+          watchId = navigator.geolocation.watchPosition(gestisciGps, () => {
+            document.getElementById('stato-gps').innerText = "Errore GPS o permessi mancanti";
+          }, { 
+            enableHighAccuracy: true, 
+            maximumAge: 0, 
+            timeout: 5000 
+          });
         }
       } else {
         btn.innerText = "RIPRENDI";
         btn.className = "btn-start";
-        window.removeEventListener('devicemotion', handleMotion);
-        if (watchPositionId) navigator.geolocation.clearWatch(watchPositionId);
+        window.removeEventListener('devicemotion', gestisciMovimento);
+        if (watchId) navigator.geolocation.clearWatch(watchId);
       }
     }
 
-    function updateUI() {
-      const stepLen = parseFloat(document.getElementById('step-length').value) || 0.75;
-      const distSteps = stepCount * stepLen;
-      
-      // La distanza totale preferisce i passi per brevi tratti ed integra il GPS
-      const total = Math.max(distSteps, distGps);
+    function aggiornaSchermata() {
+      const modo = document.getElementById('modalita').value;
+      let totale = 0;
 
-      document.getElementById('step-count').innerText = stepCount;
-      document.getElementById('dist-steps').innerText = distSteps.toFixed(1);
-      document.getElementById('dist-gps').innerText = distGps.toFixed(1);
-      document.getElementById('dist-total').innerText = total.toFixed(1) + " m";
+      if (modo === 'auto') {
+        totale = distanzaGps;
+      } else {
+        let lenPasso = parseFloat(document.getElementById('lunghezza-passo').value) || 0.75;
+        let metriPassi = passi * lenPasso;
+        totale = Math.max(metriPassi, distanzaGps);
+      }
+
+      document.getElementById('num-passi').innerText = passi;
+      document.getElementById('distanza-totale').innerText = totale.toFixed(1) + " m";
     }
 
-    function resetData() {
-      stepCount = 0;
-      distGps = 0;
-      lastCoords = null;
-      updateUI();
+    function azzera() {
+      passi = 0;
+      distanzaGps = 0;
+      ultimaPosizione = null;
+      aggiornaSchermata();
     }
+
+    // Inizializza visualizzazione
+    cambiaModalita();
   </script>
 </body>
 </html>
